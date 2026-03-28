@@ -18,6 +18,8 @@ var slotData = { 1: null, 2: null };
 // Which slot is the action sheet targeting
 var activeSlot = 1;
 
+var isSDKInitialized = false;
+
 /* ---- Plugin resolver ------------------------------------- */
 
 function getPlugin() {
@@ -77,11 +79,11 @@ function updateMatchButton() {
 /* ---- Image slot helpers ---------------------------------- */
 
 function setSlotImage(slotNum, base64WithoutPrefix, imageType) {
-    var imgId  = slotNum === 1 ? 'first-image'       : 'second-image';
-    var phId   = slotNum === 1 ? 'placeholder-first' : 'placeholder-second';
+    var imgId = slotNum === 1 ? 'first-image' : 'second-image';
+    var phId = slotNum === 1 ? 'placeholder-first' : 'placeholder-second';
 
     var img = document.getElementById(imgId);
-    var ph  = document.getElementById(phId);
+    var ph = document.getElementById(phId);
 
     if (img) {
         img.src = 'data:image/png;base64,' + base64WithoutPrefix;
@@ -95,13 +97,13 @@ function setSlotImage(slotNum, base64WithoutPrefix, imageType) {
 }
 
 function clearSlots() {
-    [1, 2].forEach(function(n) {
-        var imgId = n === 1 ? 'first-image'       : 'second-image';
-        var phId  = n === 1 ? 'placeholder-first' : 'placeholder-second';
+    [1, 2].forEach(function (n) {
+        var imgId = n === 1 ? 'first-image' : 'second-image';
+        var phId = n === 1 ? 'placeholder-first' : 'placeholder-second';
         var img = document.getElementById(imgId);
-        var ph  = document.getElementById(phId);
+        var ph = document.getElementById(phId);
         if (img) { img.src = ''; img.style.display = 'none'; }
-        if (ph)  { ph.style.display = ''; }
+        if (ph) { ph.style.display = ''; }
         slotData[n] = null;
     });
     updateMatchButton();
@@ -112,51 +114,56 @@ function clearSlots() {
 function openActionSheet(slotNum) {
     activeSlot = slotNum;
     var overlay = document.getElementById('action-sheet-overlay');
-    var sheet   = document.getElementById('action-sheet');
+    var sheet = document.getElementById('action-sheet');
     if (overlay) overlay.style.display = 'flex';
-    if (sheet)   sheet.classList.add('visible');
+    if (sheet) sheet.classList.add('visible');
 }
 
 function closeActionSheet() {
     var overlay = document.getElementById('action-sheet-overlay');
-    var sheet   = document.getElementById('action-sheet');
+    var sheet = document.getElementById('action-sheet');
     if (overlay) overlay.style.display = 'none';
-    if (sheet)   sheet.classList.remove('visible');
+    if (sheet) sheet.classList.remove('visible');
 }
 
 /* ---- Read image file → base64 (strips data-URI prefix) ---- */
 
 function readFileAsBase64(file, callback) {
     var reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
         var dataUrl = e.target.result;                // "data:image/jpeg;base64,AAAA..."
-        var comma   = dataUrl.indexOf(',');
-        var b64     = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
+        var comma = dataUrl.indexOf(',');
+        var b64 = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
         callback(b64);
     };
-    reader.onerror = function() {
+    reader.onerror = function () {
         logResult('FileReader error reading image', 'error');
     };
     reader.readAsDataURL(file);
 }
 
-/* ---- License file → base64 ------------------------------- */
+/* ---- License file → base64 (via Blob → DataURL) ---------- */
 
 function readLicenseAsBase64(file, callback) {
+
     var reader = new FileReader();
-    reader.onload = function(e) {
-        // ArrayBuffer → base64
-        var bytes  = new Uint8Array(e.target.result);
-        var binary = '';
-        for (var i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
+
+    reader.onloadend = function () {
+        var result = reader.result;
+        if (!result) {
+            logResult('License file could not be read (empty result)', 'error');
+            return;
         }
-        callback(btoa(binary));
+        const base64Data = result.split(',')[1];
+        callback(base64Data);
     };
-    reader.onerror = function() {
-        logResult('FileReader error reading license', 'error');
+
+    reader.onerror = function () {
+        logResult('FileReader error reading license file', 'error');
     };
-    reader.readAsArrayBuffer(file);
+
+    reader.readAsDataURL(file);
+
 }
 
 /* ===========================================================
@@ -171,7 +178,7 @@ function onDeviceReady() {
     /* ---- License file label update ----------------------- */
     var licenseInput = document.getElementById('licenseFile');
     if (licenseInput) {
-        licenseInput.addEventListener('change', function() {
+        licenseInput.addEventListener('change', function () {
             var label = document.getElementById('licenseLabel');
             if (label && this.files.length) {
                 label.textContent = this.files[0].name;
@@ -180,7 +187,7 @@ function onDeviceReady() {
     }
 
     /* ---- STEP 1 : Initialize ----------------------------- */
-    document.getElementById('btnInit').addEventListener('click', function() {
+    document.getElementById('btnInit').addEventListener('click', function () {
         var p = getPlugin();
         if (!p) { logResult('Plugin not found', 'error'); return; }
 
@@ -190,11 +197,15 @@ function onDeviceReady() {
             setStatus('Initializing…');
             logResult('Initializing SDK' + (licenseB64 ? ' (offline license)' : ' (online/basic)') + '…', 'info');
 
-            p.initializeFaceSDK(licenseB64, function(res) {
+            p.initializeFaceSDK(licenseB64, function (res) {
+                isSDKInitialized = true;
+                document.getElementById('face-capture').disabled = false;
                 setStatus('SDK Ready', 'ready');
                 var msg = (typeof res === 'object') ? (res.message || 'Initialized') : String(res);
                 logResult('Init success: ' + msg, 'success');
-            }, function(err) {
+            }, function (err) {
+                isSDKInitialized = false;
+                document.getElementById('face-capture').disabled = true;
                 setStatus('Init Failed', 'error');
                 logResult('Init error: ' + err, 'error');
             });
@@ -208,14 +219,14 @@ function onDeviceReady() {
     });
 
     /* ---- STEP 2 : Liveness ------------------------------- */
-    document.getElementById('start-liveness').addEventListener('click', function() {
+    document.getElementById('start-liveness').addEventListener('click', function () {
         var p = getPlugin();
         if (!p) { logResult('Plugin not found', 'error'); return; }
 
         setStatus('Liveness running…');
         logResult('Starting Liveness…', 'info');
 
-        p.startLiveness(function(res) {
+        p.startLiveness(function (res) {
             if (res.error) {
                 setStatus('Liveness Error', 'error');
                 logResult('Liveness error: ' + res.error, 'error');
@@ -228,21 +239,21 @@ function onDeviceReady() {
             if (res.image) {
                 setSlotImage(1, res.image, 2);  // imageType 2 = LIVE
             }
-        }, function(err) {
+        }, function (err) {
             setStatus('Liveness Error', 'error');
             logResult('Liveness API error: ' + err, 'error');
         });
     });
 
     /* ---- STEP 3 : Detect Face (alias of liveness) -------- */
-    document.getElementById('detect-face').addEventListener('click', function() {
+    document.getElementById('detect-face').addEventListener('click', function () {
         var p = getPlugin();
         if (!p) { logResult('Plugin not found', 'error'); return; }
 
         setStatus('Detecting…');
         logResult('Starting Face Detection…', 'info');
 
-        p.detectFace(function(res) {
+        p.detectFace(function (res) {
             if (res.error) {
                 setStatus('Detect Error', 'error');
                 logResult('Detect error: ' + res.error, 'error');
@@ -257,21 +268,21 @@ function onDeviceReady() {
                 var slot = slotData[1] ? 2 : 1;
                 setSlotImage(slot, res.image, 2);
             }
-        }, function(err) {
+        }, function (err) {
             setStatus('Detect Error', 'error');
             logResult('Detect API error: ' + err, 'error');
         });
     });
 
     /* ---- STEP 4 : Face Capture (Regula camera) ----------- */
-    document.getElementById('face-capture').addEventListener('click', function() {
+    document.getElementById('face-capture').addEventListener('click', function () {
         var p = getPlugin();
         if (!p) { logResult('Plugin not found', 'error'); return; }
 
         setStatus('Capturing…');
         logResult('Starting Face Capture…', 'info');
 
-        p.startFaceCapture(function(res) {
+        p.startFaceCapture(function (res) {
             if (res.error) {
                 setStatus('Capture Error', 'error');
                 logResult('Capture error: ' + res.error, 'error');
@@ -286,7 +297,7 @@ function onDeviceReady() {
                 setStatus('No image', 'error');
                 logResult('Capture returned no image.', 'error');
             }
-        }, function(err) {
+        }, function (err) {
             setStatus('Capture Error', 'error');
             logResult('Capture API error: ' + err, 'error');
         });
@@ -295,16 +306,16 @@ function onDeviceReady() {
     /* ---- STEP 5 : Slot taps → action sheet --------------- */
 
     // Slot 1
-    document.getElementById('slot-first').addEventListener('click', function() {
+    document.getElementById('slot-first').addEventListener('click', function () {
         openActionSheet(1);
     });
     // Slot 2
-    document.getElementById('slot-second').addEventListener('click', function() {
+    document.getElementById('slot-second').addEventListener('click', function () {
         openActionSheet(2);
     });
 
     // Overlay backdrop closes sheet
-    document.getElementById('action-sheet-overlay').addEventListener('click', function(e) {
+    document.getElementById('action-sheet-overlay').addEventListener('click', function (e) {
         if (e.target === this) closeActionSheet();
     });
 
@@ -312,30 +323,30 @@ function onDeviceReady() {
     document.getElementById('as-cancel').addEventListener('click', closeActionSheet);
 
     // --- Camera ---
-    document.getElementById('as-camera').addEventListener('click', function() {
+    document.getElementById('as-camera').addEventListener('click', function () {
         closeActionSheet();
         document.getElementById('imgPickCamera').click();
     });
 
     // --- Gallery ---
-    document.getElementById('as-gallery').addEventListener('click', function() {
+    document.getElementById('as-gallery').addEventListener('click', function () {
         closeActionSheet();
         document.getElementById('imgPickGallery').click();
     });
 
     // --- File ---
-    document.getElementById('as-file').addEventListener('click', function() {
+    document.getElementById('as-file').addEventListener('click', function () {
         closeActionSheet();
         document.getElementById('imgPickFile').click();
     });
 
     // Wire hidden inputs — all three read the selected file the same way
-    ['imgPickCamera', 'imgPickGallery', 'imgPickFile'].forEach(function(inputId) {
-        document.getElementById(inputId).addEventListener('change', function() {
+    ['imgPickCamera', 'imgPickGallery', 'imgPickFile'].forEach(function (inputId) {
+        document.getElementById(inputId).addEventListener('change', function () {
             if (!this.files || !this.files.length) return;
             var file = this.files[0];
             var slot = activeSlot;
-            readFileAsBase64(file, function(b64) {
+            readFileAsBase64(file, function (b64) {
                 setSlotImage(slot, b64, 1);  // imageType 1 = PRINTED (external file)
                 logResult('Image loaded from ' + inputId.replace('imgPick', '') + ' → slot ' + slot, 'info');
             });
@@ -345,7 +356,7 @@ function onDeviceReady() {
     });
 
     /* ---- STEP 5 : Match Faces ---------------------------- */
-    document.getElementById('match-faces').addEventListener('click', function() {
+    document.getElementById('match-faces').addEventListener('click', function () {
         var p = getPlugin();
         if (!p) { logResult('Plugin not found', 'error'); return; }
 
@@ -362,7 +373,7 @@ function onDeviceReady() {
             { base64: slotData[2].base64, imageType: slotData[2].imageType }
         ];
 
-        p.matchFaces(images, function(res) {
+        p.matchFaces(images, function (res) {
             if (res.error) {
                 setStatus('Match Error', 'error');
                 logResult('Match error: ' + res.error, 'error');
@@ -373,14 +384,14 @@ function onDeviceReady() {
             var pct = res.similarity !== null ? (res.similarity * 100).toFixed(1) + '%' : 'null';
             var matched = res.matched ? 'MATCHED ✓' : 'NOT matched ✗';
             logResult('Similarity: ' + pct + ' — ' + matched, res.matched ? 'success' : 'error');
-        }, function(err) {
+        }, function (err) {
             setStatus('Match Error', 'error');
             logResult('Match API error: ' + err, 'error');
         });
     });
 
     /* ---- Clear ------------------------------------------- */
-    document.getElementById('clear-results').addEventListener('click', function() {
+    document.getElementById('clear-results').addEventListener('click', function () {
         clearSlots();
         setSimilarity(null);
         setLiveness(null);
@@ -391,7 +402,7 @@ function onDeviceReady() {
     });
 
     /* ---- Deinitialize ------------------------------------ */
-    document.getElementById('btnDeinit').addEventListener('click', function() {
+    document.getElementById('btnDeinit').addEventListener('click', function () {
         var p = getPlugin();
         if (!p) { logResult('Plugin not found', 'error'); return; }
 
@@ -401,10 +412,10 @@ function onDeviceReady() {
         setSimilarity(null);
         setLiveness(null);
 
-        p.deinitializeFaceSDK(function(res) {
+        p.deinitializeFaceSDK(function (res) {
             setStatus('SDK Stopped');
             logResult('Deinit: ' + res, 'success');
-        }, function(err) {
+        }, function (err) {
             setStatus('Deinit Error', 'error');
             logResult('Deinit error: ' + err, 'error');
         });
