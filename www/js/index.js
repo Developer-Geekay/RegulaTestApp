@@ -252,22 +252,11 @@ function onDeviceReady() {
 
         setStatus('Detecting…');
         logResult('Starting Face Detection…', 'info');
+        var image = slotData[1].base64;
 
-        p.detectFace(function (res) {
-            if (res.error) {
-                setStatus('Detect Error', 'error');
-                logResult('Detect error: ' + res.error, 'error');
-                return;
-            }
+        p.detectFace(image, function (res) {
             setStatus('Detection done', 'ready');
-            setLiveness(res.liveness);
             logResult('Face Detected — Liveness: ' + (res.liveness === 1 ? 'Passed' : 'Unknown'), 'success');
-
-            if (res.image) {
-                // Put in slot 1 if empty, else slot 2
-                var slot = slotData[1] ? 2 : 1;
-                setSlotImage(slot, res.image, 2);
-            }
         }, function (err) {
             setStatus('Detect Error', 'error');
             logResult('Detect API error: ' + err, 'error');
@@ -347,6 +336,7 @@ function onDeviceReady() {
             var file = this.files[0];
             var slot = activeSlot;
             readFileAsBase64(file, function (b64) {
+                logResult(b64)
                 setSlotImage(slot, b64, 1);  // imageType 1 = PRINTED (external file)
                 logResult('Image loaded from ' + inputId.replace('imgPick', '') + ' → slot ' + slot, 'info');
             });
