@@ -13,9 +13,9 @@ var isDocReaderInitialized = false;
 
 /* ---- Plugin resolver ------------------------------------- */
 function getPlugin() {
-    return window.Regula
-        || (window.cordova && window.cordova.plugins && window.cordova.plugins.Regula)
-        || (typeof Regula !== 'undefined' ? Regula : null);
+    return window.RegulaPlugin
+        || (window.cordova && window.cordova.plugins && window.cordova.plugins.RegulaPlugin)
+        || (typeof RegulaPlugin !== 'undefined' ? RegulaPlugin : null);
 }
 
 /* ---- UI helpers ------------------------------------------ */
@@ -265,50 +265,8 @@ function onDeviceReady() {
 
     /* =======================================================
        SECTION B: DOCUMENT READER SDK
+       (wired up via btn-init / btn-scan / btn-deinit below)
        ======================================================= */
-
-    /* ---- Initialize Document Reader ---------------------- */
-    if (document.getElementById('init-reader')) {
-        document.getElementById('init-reader').addEventListener('click', function () {
-            var licenseFile = licenseInput && licenseInput.files.length ? licenseInput.files[0] : null;
-
-            function doInitReader(licenseB64) {
-                setStatus('Init DocReader…');
-                // Maps to: p.DocumentReader.initializeReader(config, success, error)
-                var config = { license: licenseB64, licenseUpdateTimeout: 2.0 };
-
-                p.DocumentReader.initializeReader(config, function (res) {
-                    isDocReaderInitialized = true;
-                    setStatus('DocReader Ready', 'ready');
-                    logResult('Document Reader Initialized', 'success');
-                }, function (err) {
-                    isDocReaderInitialized = false;
-                    setStatus('DocReader Init Failed', 'error');
-                    logResult('DocReader Init error: ' + err, 'error');
-                });
-            }
-
-            if (licenseFile) readLicenseAsBase64(licenseFile, doInitReader);
-            else doInitReader(null);
-        });
-    }
-
-    /* ---- Start Document Scanner -------------------------- */
-    if (document.getElementById('start-scanner')) {
-        document.getElementById('start-scanner').addEventListener('click', function () {
-            setStatus('Scanning…');
-            // Maps to: p.DocumentReader.startScanner(config, success, error)
-            var config = { scenario: "Mrz" };
-
-            p.DocumentReader.startScanner(config, function (res) {
-                setStatus('Scan done', 'ready');
-                logResult('Scan result: ' + JSON.stringify(res), 'success');
-            }, function (err) {
-                setStatus('Scan Error', 'error');
-                logResult('Scan error: ' + err, 'error');
-            });
-        });
-    }
 
     /* ---- Deinitialize All -------------------------------- */
     if (document.getElementById('btnDeinit')) {
@@ -370,4 +328,97 @@ function onDeviceReady() {
     }
 
     updateMatchButton();
+
+    document.getElementById('btn-init').addEventListener('click', initializeSDK);
+    document.getElementById('btn-scenarios').addEventListener('click', getScenarios);
+    document.getElementById('btn-prepare-db').addEventListener('click', prepareDatabase);
+    document.getElementById('btn-scan').addEventListener('click', startScanner);
+    document.getElementById('btn-deinit').addEventListener('click', deinitializeSDK);
+
+    // ---------------------------------------------------------
+    // SDK Functions
+    // ---------------------------------------------------------
+
+    function initializeSDK() {
+        logResult("Initializing SDK...", "info");
+
+        var licenseFile = licenseInput && licenseInput.files.length ? licenseInput.files[0] : null;
+        if (licenseFile) { readLicenseAsBase64(licenseFile, doInitDocReader); }
+        // IMPORTANT: Replace this placeholder with your actual Base64 encoded 'regula.license' file content
+        function doInitDocReader(licenseB64) {
+            var config = {
+                license: licenseB64,
+                licenseUpdateTimeout: 2.0
+            };
+
+            p.DocumentReader.initializeReader(config, function (message) {
+                logResult("Init Success: " + message, "success");
+
+                // Enable other buttons
+                document.getElementById('btn-scenarios').disabled = false;
+                document.getElementById('btn-prepare-db').disabled = false;
+                document.getElementById('btn-scan').disabled = false;
+                document.getElementById('btn-deinit').disabled = false;
+
+            }, function (error) {
+                logResult("Init Error: " + error, "error");
+            });
+        }
+
+    }
+
+    function getScenarios() {
+        logResult("Fetching available scenarios...", "info");
+        p.DocumentReader.getAvailableScenarios(function (scenarios) {
+            logResult("Available Scenarios: " + JSON.stringify(scenarios), "success");
+        }, function (error) {
+            logResult("Scenarios Error: " + error, "error");
+        });
+    }
+
+    function prepareDatabase() {
+        logResult("Preparing Database ('Full'). Please wait...", "info");
+
+        // "Full" is standard for Regula DB IDs.
+        p.DocumentReader.prepareDatabase("Full", function (message) {
+            // This callback handles BOTH continuous progress and final completion
+            logResult(message, "success");
+        }, function (error) {
+            logResult("DB Prepare Error: " + error, "error");
+        });
+    }
+
+    function startScanner() {
+        logResult("Starting Camera Scanner...", "info");
+
+        // Use a standard scenario name (e.g. "FullProcess" or "Mrz"). 
+        // You can pick one retrieved from 'getAvailableScenarios'
+        var scannerConfig = {
+            scenario: "FullProcess"
+        };
+
+        p.DocumentReader.startScanner(scannerConfig, function (result) {
+            logResult("Scanner Success: " + result, "success");
+            // Note: Currently, the Java plugin sends a placeholder string on success.
+            // Once you implement JSON serialization in Java, this 'result' will be a JSON object containing Document info.
+        }, function (error) {
+            logResult("Scanner Error/Cancelled: " + error, "error");
+        });
+    }
+
+    function deinitializeSDK() {
+        logResult("Deinitializing SDK...", "info");
+        p.DocumentReader.deinitializeReader(function (message) {
+            logResult(message, "success");
+
+            // Disable buttons again
+            document.getElementById('btn-scenarios').disabled = true;
+            document.getElementById('btn-prepare-db').disabled = true;
+            document.getElementById('btn-scan').disabled = true;
+            document.getElementById('btn-deinit').disabled = true;
+
+        }, function (error) {
+            logResult("Deinit Error: " + error, "error");
+        });
+    }
 }
