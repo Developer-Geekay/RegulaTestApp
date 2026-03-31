@@ -2,7 +2,7 @@
 
 ## Goal
 
-Revamp the Cordova plugin (`RegulaForensicsPlugin.java`) and the test-app frontend (`index.html` / `index.js`) to:
+Revamp the Cordova plugin (`RegulaFacePlugin.java`) and the test-app frontend (`index.html` / `index.js`) to:
 
 1. Move license loading to the **frontend** — user picks a `.license` file; its base64 is passed to the plugin at init time.
 2. All features (Liveness, Detection, Capture, Match) work through the initialized `FaceSDK.Instance()`.
@@ -25,7 +25,7 @@ Revamp the Cordova plugin (`RegulaForensicsPlugin.java`) and the test-app fronte
 
 ## Step 1 — Initialize
 
-### Java (`RegulaForensicsPlugin.java`)
+### Java (`RegulaFacePlugin.java`)
 
 - Action: `initializeFaceSDK`
 - Input: `args[0]` = base64-encoded license string (or `null` for basic/online mode)
@@ -157,7 +157,7 @@ FaceSDK.Instance().matchFaces(context, request, response -> {
 
 | File | Changes |
 |------|---------|
-| `cordova-plugin-regula/src/android/RegulaForensicsPlugin.java` | Steps 1–5 Java implementation |
+| `cordova-plugin-regula/src/android/RegulaFacePlugin.java` | Steps 1–5 Java implementation |
 | `RegulaTestApp/www/index.html` | License picker, slot click handlers, action sheet |
 | `RegulaTestApp/www/js/index.js` | All JS bridge logic |
 | `RegulaTestApp/www/css/index.css` | Action sheet / bottom-sheet styling |
