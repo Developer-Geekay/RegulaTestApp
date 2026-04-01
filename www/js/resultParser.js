@@ -1,7 +1,3 @@
-var exec = require('cordova/exec');
-
-var SERVICE_NAME = 'DocumentReaderPlugin';
-
 // =============================================================================
 // Enums — mirrors Regula SDK constants for use in JS
 // =============================================================================
