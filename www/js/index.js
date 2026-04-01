@@ -320,7 +320,9 @@ function onDeviceReady() {
         // 1. Capture Document
         p.DocumentReader.startScanner({ scenario: "FullProcess" }, function (docResultStr) {
             setStatus('Parsing Doc Result...');
+            console.log(docResultStr)
             var docResults = new DocumentReaderResults(docResultStr);
+            console.log(docResults)
             var docName = docResults.getDocumentName() || "Unknown Document";
             var portraitBase64 = docResults.getPortrait();
 
@@ -513,6 +515,7 @@ function onDeviceReady() {
 
     // Process and display combined results
     function showCombinedUI(docResults, livenessRes, matchRes) {
+        console.log(docResults)
         var portraitBase64 = docResults.getPortrait();
         var liveBase64 = livenessRes.image;
 
