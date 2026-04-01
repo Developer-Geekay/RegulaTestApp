@@ -1,5 +1,6 @@
 /* ============================================================
-   Regula Face & Document Reader SDK — Test App (index.js)
+   Regula SDKs — Test App (index.js)
+   Refactored for 3-page functionality: Face, Document, Combined
    ============================================================ */
 
 document.addEventListener('deviceready', onDeviceReady, false);
@@ -26,26 +27,38 @@ function setStatus(text, type) {
     if (badge) badge.className = 'status-badge' + (type ? ' ' + type : '');
 }
 
-function setSimilarity(value) {
-    var el = document.getElementById('similarity-status');
-    if (!el) return;
-    if (value === null || value === undefined) {
-        el.textContent = '—'; el.className = 'stat-value'; return;
-    }
-    var pct = (value * 100).toFixed(1) + '%';
-    el.textContent = pct;
-    el.className = 'stat-value ' + (value >= 0.75 ? 'good' : value >= 0.5 ? 'warn' : 'bad');
+function setFaceSimilarity(value) {
+    _renderStat('similarity-status', value, true);
 }
 
-function setLiveness(value) {
-    var el = document.getElementById('liveness-status');
+function setFaceLiveness(value) {
+    _renderStat('liveness-status', value, false);
+}
+
+function setCombinedSimilarity(value) {
+    _renderStat('combined-similarity', value, true);
+}
+
+function setCombinedLiveness(value) {
+    _renderStat('combined-liveness', value, false);
+}
+
+function _renderStat(elementId, value, isPercentage) {
+    var el = document.getElementById(elementId);
     if (!el) return;
     if (value === null || value === undefined) {
         el.textContent = '—'; el.className = 'stat-value'; return;
     }
-    var label = value === 1 ? 'Passed' : 'Unknown';
-    el.textContent = label;
-    el.className = 'stat-value ' + (value === 1 ? 'good' : 'bad');
+
+    if (isPercentage) {
+        var pct = (value * 100).toFixed(1) + '%';
+        el.textContent = pct;
+        el.className = 'stat-value ' + (value >= 0.75 ? 'good' : value >= 0.5 ? 'warn' : 'bad');
+    } else {
+        var label = value === 1 ? 'Passed' : 'Unknown/Failed';
+        el.textContent = label;
+        el.className = 'stat-value ' + (value === 1 ? 'good' : 'bad');
+    }
 }
 
 function logResult(msg, type) {
@@ -95,6 +108,27 @@ function clearSlots() {
     updateMatchButton();
 }
 
+function renderCombinedImages(docBase64, liveBase64) {
+    var imgDoc = document.getElementById('combined-doc-image');
+    var phDoc = document.getElementById('placeholder-combined-doc');
+    var imgLive = document.getElementById('combined-live-image');
+    var phLive = document.getElementById('placeholder-combined-live');
+
+    if (docBase64 && imgDoc) {
+        imgDoc.src = 'data:image/png;base64,' + docBase64;
+        imgDoc.style.display = 'block';
+        if (phDoc) phDoc.style.display = 'none';
+    }
+
+    if (liveBase64 && imgLive) {
+        imgLive.src = 'data:image/png;base64,' + liveBase64;
+        imgLive.style.display = 'block';
+        if (phLive) phLive.style.display = 'none';
+    }
+
+    document.getElementById('combined-results-view').style.display = 'block';
+}
+
 /* ---- Action sheet ---------------------------------------- */
 function openActionSheet(slotNum) {
     activeSlot = slotNum;
@@ -125,17 +159,18 @@ function readFileAsBase64(file, callback) {
 }
 
 function readLicenseAsBase64(file, callback) {
+    if (!file) return callback(null);
     var reader = new FileReader();
     reader.onloadend = function () {
         var result = reader.result;
         if (!result) {
-            logResult('License file could not be read (empty result)', 'error');
-            return;
+            logResult('License file could not be read', 'error');
+            return callback(null);
         }
-        const base64Data = result.split(',')[1];
+        var base64Data = result.split(',')[1];
         callback(base64Data);
     };
-    reader.onerror = function () { logResult('FileReader error reading license file', 'error'); };
+    reader.onerror = function () { logResult('FileReader error reading license', 'error'); };
     reader.readAsDataURL(file);
 }
 
@@ -153,272 +188,356 @@ function onDeviceReady() {
         return;
     }
 
-    var licenseInput = document.getElementById('licenseFile');
-    if (licenseInput) {
-        licenseInput.addEventListener('change', function () {
-            var label = document.getElementById('licenseLabel');
-            if (label && this.files.length) label.textContent = this.files[0].name;
-        });
-    }
+    setupTabs();
+    setupFilePickers();
+    setupActionSheet();
 
     /* =======================================================
-       SECTION A: FACE SDK
+       PAGE 1: FACE SDK BINDINGS
        ======================================================= */
-
-    /* ---- Initialize Face --------------------------------- */
-    if (document.getElementById('btnInit')) {
-        document.getElementById('btnInit').addEventListener('click', function () {
-            var licenseFile = licenseInput && licenseInput.files.length ? licenseInput.files[0] : null;
-
-            function doInitFace(licenseB64) {
-                setStatus('Initializing Face SDK…');
-                p.Face.initializeFaceSDK(licenseB64, function (res) {
-                    isFaceSDKInitialized = true;
-                    if (document.getElementById('face-capture')) document.getElementById('face-capture').disabled = false;
-                    setStatus('Face SDK Ready', 'ready');
-                    logResult('Face Init success: ' + (res.message || res), 'success');
-                }, function (err) {
-                    isFaceSDKInitialized = false;
-                    setStatus('Face Init Failed', 'error');
-                    logResult('Face Init error: ' + err, 'error');
-                });
-            }
-
-            if (licenseFile) { readLicenseAsBase64(licenseFile, doInitFace); }
-            else { doInitFace(null); }
-        });
-    }
-
-    /* ---- Liveness ---------------------------------------- */
-    if (document.getElementById('start-liveness')) {
-        document.getElementById('start-liveness').addEventListener('click', function () {
-            setStatus('Liveness running…');
-            p.Face.startLiveness(function (res) {
-                if (res.error) {
-                    setStatus('Liveness Error', 'error');
-                    logResult('Liveness error: ' + res.error, 'error');
-                    return;
-                }
-                setStatus('Liveness done', 'ready');
-                setLiveness(res.liveness);
-                logResult('Liveness: ' + (res.liveness === 1 ? 'Passed' : 'Unknown'), 'success');
-
-                if (res.image) setSlotImage(1, res.image, 2); // 2 = LIVE
-            }, function (err) {
-                setStatus('Liveness API Error', 'error');
-                logResult('Liveness API error: ' + err, 'error');
+    var btnInitFace = document.getElementById('btnInitFace');
+    if (btnInitFace) {
+        btnInitFace.addEventListener('click', function () {
+            var input = document.getElementById('licenseFileFace');
+            readLicenseAsBase64(input.files[0], function (b64) {
+                initFaceSDK(p, b64);
             });
         });
     }
 
-    /* ---- Face Capture ------------------------------------ */
-    if (document.getElementById('face-capture')) {
-        document.getElementById('face-capture').addEventListener('click', function () {
-            setStatus('Capturing…');
-            p.Face.startFaceCapture(function (res) {
-                if (res.error) {
-                    setStatus('Capture Error', 'error');
-                    logResult('Capture error: ' + res.error, 'error');
-                    return;
-                }
-                if (res.image) {
-                    setStatus('Capture done', 'ready');
-                    var slot = slotData[1] ? 2 : 1;
-                    setSlotImage(slot, res.image, res.imageType || 1);
-                    logResult('Face captured → slot ' + slot, 'success');
-                }
-            }, function (err) {
-                setStatus('Capture API Error', 'error');
-                logResult('Capture API error: ' + err, 'error');
-            });
-        });
-    }
-
-    /* ---- Match Faces ------------------------------------- */
-    if (document.getElementById('match-faces')) {
-        document.getElementById('match-faces').addEventListener('click', function () {
-            if (!slotData[1] || !slotData[2]) {
-                logResult('Need images in both slots before matching.', 'error');
-                return;
+    document.getElementById('start-liveness').addEventListener('click', function () {
+        if (!isFaceSDKInitialized) return logResult('Face SDK not initialized', 'error');
+        setStatus('Liveness running…');
+        p.Face.startLiveness(function (res) {
+            if (res.error) {
+                setStatus('Liveness Error', 'error');
+                return logResult('Liveness error: ' + res.error, 'error');
             }
-            setStatus('Matching…');
-            var images = [
-                { base64: slotData[1].base64, imageType: slotData[1].imageType },
-                { base64: slotData[2].base64, imageType: slotData[2].imageType }
-            ];
-
-            p.Face.matchFaces(images, function (res) {
-                if (res.error) {
-                    setStatus('Match Error', 'error');
-                    logResult('Match error: ' + res.error, 'error');
-                    return;
-                }
-                setStatus('Match done', 'ready');
-                setSimilarity(res.similarity);
-                logResult('Similarity: ' + (res.similarity * 100).toFixed(1) + '%', 'success');
-            }, function (err) {
-                setStatus('Match Error', 'error');
-                logResult('Match API error: ' + err, 'error');
-            });
+            setStatus('Liveness done', 'ready');
+            setFaceLiveness(res.liveness);
+            logResult('Liveness: ' + (res.liveness === 1 ? 'Passed' : 'Unknown'), 'success');
+            if (res.image) setSlotImage(1, res.image, 2); // 2 = LIVE
+        }, function (err) {
+            setStatus('Liveness API Error', 'error');
+            logResult('Liveness API error: ' + err, 'error');
         });
-    }
-
-    /* =======================================================
-       SECTION B: DOCUMENT READER SDK
-       (wired up via btn-init / btn-scan / btn-deinit below)
-       ======================================================= */
-
-    /* ---- Deinitialize All -------------------------------- */
-    if (document.getElementById('btnDeinit')) {
-        document.getElementById('btnDeinit').addEventListener('click', function () {
-            setStatus('Deinitializing…');
-            clearSlots();
-
-            if (isFaceSDKInitialized) {
-                p.Face.deinitializeFaceSDK(
-                    function () { logResult('Face SDK Deinitialized', 'success'); },
-                    function (e) { logResult('Face Deinit error: ' + e, 'error'); }
-                );
-            }
-            if (isDocReaderInitialized) {
-                p.DocumentReader.deinitializeReader(
-                    function () { logResult('DocReader Deinitialized', 'success'); },
-                    function (e) { logResult('DocReader Deinit error: ' + e, 'error'); }
-                );
-            }
-            setStatus('SDKs Stopped');
-        });
-    }
-
-    /* ---- UI Bindings (Action Sheet & Slots) -------------- */
-    if (document.getElementById('slot-first')) document.getElementById('slot-first').addEventListener('click', function () { openActionSheet(1); });
-    if (document.getElementById('slot-second')) document.getElementById('slot-second').addEventListener('click', function () { openActionSheet(2); });
-    if (document.getElementById('action-sheet-overlay')) {
-        document.getElementById('action-sheet-overlay').addEventListener('click', function (e) { if (e.target === this) closeActionSheet(); });
-    }
-    if (document.getElementById('as-cancel')) document.getElementById('as-cancel').addEventListener('click', closeActionSheet);
-    if (document.getElementById('as-camera')) document.getElementById('as-camera').addEventListener('click', function () { closeActionSheet(); document.getElementById('imgPickCamera').click(); });
-    if (document.getElementById('as-gallery')) document.getElementById('as-gallery').addEventListener('click', function () { closeActionSheet(); document.getElementById('imgPickGallery').click(); });
-    if (document.getElementById('as-file')) document.getElementById('as-file').addEventListener('click', function () { closeActionSheet(); document.getElementById('imgPickFile').click(); });
-
-    ['imgPickCamera', 'imgPickGallery', 'imgPickFile'].forEach(function (inputId) {
-        var el = document.getElementById(inputId);
-        if (el) {
-            el.addEventListener('change', function () {
-                if (!this.files || !this.files.length) return;
-                var file = this.files[0];
-                var slot = activeSlot;
-                readFileAsBase64(file, function (b64) {
-                    setSlotImage(slot, b64, 1); // 1 = PRINTED
-                });
-                this.value = ''; // reset
-            });
-        }
     });
 
-    if (document.getElementById('clear-results')) {
-        document.getElementById('clear-results').addEventListener('click', function () {
-            clearSlots();
-            setSimilarity(null);
-            setLiveness(null);
-            setStatus('Device Ready', 'ready');
-            var resDiv = document.getElementById('results');
-            if (resDiv) resDiv.innerHTML = '';
+    document.getElementById('match-faces').addEventListener('click', function () {
+        if (!slotData[1] || !slotData[2]) return logResult('Need images in both slots.', 'error');
+        setStatus('Matching…');
+        var images = [
+            { base64: slotData[1].base64, imageType: slotData[1].imageType },
+            { base64: slotData[2].base64, imageType: slotData[2].imageType }
+        ];
+
+        p.Face.matchFaces(images, function (res) {
+            if (res.error) {
+                setStatus('Match Error', 'error');
+                return logResult('Match error: ' + res.error, 'error');
+            }
+            setStatus('Match done', 'ready');
+            setFaceSimilarity(res.similarity);
+            logResult('Similarity: ' + (res.similarity * 100).toFixed(1) + '%', 'success');
+        }, function (err) {
+            setStatus('Match Error', 'error');
+            logResult('Match API error: ' + err, 'error');
+        });
+    });
+
+    document.getElementById('clear-results').addEventListener('click', function () {
+        clearSlots();
+        setFaceSimilarity(null);
+        setFaceLiveness(null);
+        document.getElementById('combined-results-view').style.display = 'none';
+        var resDiv = document.getElementById('results');
+        if (resDiv) resDiv.innerHTML = '';
+        setStatus('Cleared', 'ready');
+    });
+
+    /* =======================================================
+       PAGE 2: DOCUMENT SDK BINDINGS
+       ======================================================= */
+    var btnInitDoc = document.getElementById('btn-init-doc');
+    if (btnInitDoc) {
+        btnInitDoc.addEventListener('click', function () {
+            var input = document.getElementById('licenseFileDoc');
+            readLicenseAsBase64(input.files[0], function (b64) {
+                initDocumentSDK(p, b64);
+            });
         });
     }
 
-    updateMatchButton();
-
-    document.getElementById('btn-init').addEventListener('click', initializeSDK);
-    document.getElementById('btn-scenarios').addEventListener('click', getScenarios);
-    document.getElementById('btn-prepare-db').addEventListener('click', prepareDatabase);
-    document.getElementById('btn-scan').addEventListener('click', startScanner);
-    document.getElementById('btn-deinit').addEventListener('click', deinitializeSDK);
-
-    // ---------------------------------------------------------
-    // SDK Functions
-    // ---------------------------------------------------------
-
-    function initializeSDK() {
-        logResult("Initializing SDK...", "info");
-
-        var licenseFile = licenseInput && licenseInput.files.length ? licenseInput.files[0] : null;
-        if (licenseFile) { readLicenseAsBase64(licenseFile, doInitDocReader); }
-        // IMPORTANT: Replace this placeholder with your actual Base64 encoded 'regula.license' file content
-        function doInitDocReader(licenseB64) {
-            var config = {
-                license: licenseB64,
-                licenseUpdateTimeout: 2.0
-            };
-
-            p.DocumentReader.initializeReader(config, function (message) {
-                logResult("Init Success: " + message, "success");
-
-                // Enable other buttons
-                document.getElementById('btn-scenarios').disabled = false;
-                document.getElementById('btn-prepare-db').disabled = false;
-                document.getElementById('btn-scan').disabled = false;
-                document.getElementById('btn-deinit').disabled = false;
-
-            }, function (error) {
-                logResult("Init Error: " + error, "error");
-            });
-        }
-
-    }
-
-    function getScenarios() {
-        logResult("Fetching available scenarios...", "info");
+    document.getElementById('btn-scenarios').addEventListener('click', function () {
         p.DocumentReader.getAvailableScenarios(function (scenarios) {
             logResult("Available Scenarios: " + JSON.stringify(scenarios), "success");
-        }, function (error) {
-            logResult("Scenarios Error: " + error, "error");
-        });
-    }
+        }, function (error) { logResult("Scenarios Error: " + error, "error"); });
+    });
 
-    function prepareDatabase() {
+    document.getElementById('btn-prepare-db').addEventListener('click', function () {
         logResult("Preparing Database ('Full'). Please wait...", "info");
+        p.DocumentReader.prepareDatabase("Full", function (msg) {
+            logResult(msg, "success");
+        }, function (error) { logResult("DB Prepare Error: " + error, "error"); });
+    });
 
-        // "Full" is standard for Regula DB IDs.
-        p.DocumentReader.prepareDatabase("Full", function (message) {
-            // This callback handles BOTH continuous progress and final completion
-            logResult(message, "success");
-        }, function (error) {
-            logResult("DB Prepare Error: " + error, "error");
-        });
-    }
-
-    function startScanner() {
+    document.getElementById('btn-scan').addEventListener('click', function () {
         logResult("Starting Camera Scanner...", "info");
+        p.DocumentReader.startScanner({ scenario: "FullProcess" }, function (result) {
+            var results = new DocumentReaderResults(result);
+            logResult("Document Recognized: " + (results.getDocumentName() || 'Unknown'), "success");
+        }, function (error) { logResult("Scanner Error/Cancelled: " + error, "error"); });
+    });
 
-        // Use a standard scenario name (e.g. "FullProcess" or "Mrz"). 
-        // You can pick one retrieved from 'getAvailableScenarios'
-        var scannerConfig = {
-            scenario: "FullProcess"
-        };
 
-        p.DocumentReader.startScanner(scannerConfig, function (result) {
-            logResult("Scanner Success: " + result, "success");
-            // Note: Currently, the Java plugin sends a placeholder string on success.
-            // Once you implement JSON serialization in Java, this 'result' will be a JSON object containing Document info.
-        }, function (error) {
-            logResult("Scanner Error/Cancelled: " + error, "error");
+    /* =======================================================
+       PAGE 3: COMBINED FLOW BINDINGS
+       ======================================================= */
+    var btnInitBoth = document.getElementById('btnInitBoth');
+    if (btnInitBoth) {
+        btnInitBoth.addEventListener('click', function () {
+            var input = document.getElementById('licenseFileCombined');
+            readLicenseAsBase64(input.files[0], function (b64) {
+                // Initialize Both Sequentially
+                initFaceSDK(p, b64, function () {
+                    initDocumentSDK(p, b64, function () {
+                        document.getElementById('btn-capture-verify').disabled = false;
+                        logResult("Combined Flow Ready. Both SDKs Initialized.", "success");
+                    });
+                });
+            });
         });
     }
 
-    function deinitializeSDK() {
-        logResult("Deinitializing SDK...", "info");
-        p.DocumentReader.deinitializeReader(function (message) {
-            logResult(message, "success");
+    document.getElementById('btn-capture-verify').addEventListener('click', function () {
+        if (!isFaceSDKInitialized || !isDocReaderInitialized) {
+            return logResult('Please initialize both SDKs first.', 'error');
+        }
 
-            // Disable buttons again
-            document.getElementById('btn-scenarios').disabled = true;
-            document.getElementById('btn-prepare-db').disabled = true;
-            document.getElementById('btn-scan').disabled = true;
-            document.getElementById('btn-deinit').disabled = true;
+        logResult('Combined Flow: 1. Starting Document Scanner...', 'info');
+        setStatus('Scanning Document...');
 
-        }, function (error) {
-            logResult("Deinit Error: " + error, "error");
+        // 1. Capture Document
+        p.DocumentReader.startScanner({ scenario: "FullProcess" }, function (docResultStr) {
+            setStatus('Parsing Doc Result...');
+            var docResults = new DocumentReaderResults(docResultStr);
+            var docName = docResults.getDocumentName() || "Unknown Document";
+            var portraitBase64 = docResults.getPortrait();
+
+            logResult("Document scanned: " + docName, "success");
+
+            if (!portraitBase64) {
+                logResult("Warning: No portrait found on the scanned document.", "warn");
+            }
+
+            // 2. Face Liveness
+            logResult('Combined Flow: 2. Starting Face Liveness...', 'info');
+            setStatus('Liveness Check...');
+
+            p.Face.startLiveness(function (livenessRes) {
+                if (livenessRes.error) {
+                    setStatus('Liveness Canceled/Error', 'error');
+                    return logResult('Liveness Error: ' + livenessRes.error, 'error');
+                }
+
+                var liveBase64 = livenessRes.image;
+                logResult('Liveness Status: ' + (livenessRes.liveness === 1 ? 'Passed' : 'Failed'), 'success');
+
+                // 3. Match Faces
+                if (portraitBase64 && liveBase64) {
+                    logResult('Combined Flow: 3. Matching Document Portrait with Live Face...', 'info');
+                    setStatus('Matching Faces...');
+
+                    var images = [
+                        { base64: portraitBase64, imageType: 1 }, // 1 = Printed
+                        { base64: liveBase64, imageType: 2 }      // 2 = Live
+                    ];
+
+                    p.Face.matchFaces(images, function (matchRes) {
+                        setStatus('Combined Flow Complete', 'ready');
+                        showCombinedUI(docResults, livenessRes, matchRes);
+                    }, function (matchErr) {
+                        logResult('Match API Error: ' + matchErr, 'error');
+                        showCombinedUI(docResults, livenessRes, null);
+                    });
+                } else {
+                    setStatus('Flow Complete (No Match)', 'ready');
+                    showCombinedUI(docResults, livenessRes, null);
+                }
+
+            }, function (liveErr) {
+                setStatus('Liveness API Error', 'error');
+                logResult('Liveness API Error: ' + liveErr, 'error');
+            });
+
+        }, function (scanErr) {
+            setStatus('Scanner Canceled/Error', 'error');
+            logResult('Scanner Error: ' + scanErr, 'error');
         });
+    });
+
+
+    /* =======================================================
+       GLOBAL SDK DE-INIT
+       ======================================================= */
+    document.getElementById('btnDeinitAll').addEventListener('click', function () {
+        setStatus('Deinitializing…');
+        clearSlots();
+
+        if (isFaceSDKInitialized) {
+            p.Face.deinitializeFaceSDK(
+                function () {
+                    isFaceSDKInitialized = false;
+                    logResult('Face SDK Deinitialized', 'success');
+                },
+                function (e) { logResult('Face Deinit error: ' + e, 'error'); }
+            );
+        }
+        if (isDocReaderInitialized) {
+            p.DocumentReader.deinitializeReader(
+                function () {
+                    isDocReaderInitialized = false;
+                    logResult('DocReader Deinitialized', 'success');
+                    // Disable Doc buttons
+                    document.getElementById('btn-scenarios').disabled = true;
+                    document.getElementById('btn-prepare-db').disabled = true;
+                    document.getElementById('btn-scan').disabled = true;
+                    document.getElementById('btn-capture-verify').disabled = true;
+                },
+                function (e) { logResult('DocReader Deinit error: ' + e, 'error'); }
+            );
+        }
+        setStatus('SDKs Stopped', 'ready');
+    });
+
+    /* =======================================================
+       HELPER FUNCTIONS
+       ======================================================= */
+
+    function setupTabs() {
+        var tabs = document.querySelectorAll('.tab-btn');
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                // Remove active from all
+                tabs.forEach(function (t) { t.classList.remove('active'); });
+                document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+
+                // Set active to clicked
+                this.classList.add('active');
+                var target = this.getAttribute('data-target');
+                document.getElementById(target).classList.add('active');
+            });
+        });
+    }
+
+    function setupFilePickers() {
+        // Label updaters
+        ['licenseFileFace', 'licenseFileDoc', 'licenseFileCombined'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function () {
+                    var label = document.getElementById(id.replace('File', 'Label'));
+                    if (label && this.files.length) label.textContent = this.files[0].name;
+                });
+            }
+        });
+
+        // Image pickers
+        ['imgPickCamera', 'imgPickGallery', 'imgPickFile'].forEach(function (inputId) {
+            var el = document.getElementById(inputId);
+            if (el) {
+                el.addEventListener('change', function () {
+                    if (!this.files || !this.files.length) return;
+                    var file = this.files[0];
+                    var slot = activeSlot;
+                    readFileAsBase64(file, function (b64) {
+                        setSlotImage(slot, b64, 1); // 1 = PRINTED
+                    });
+                    this.value = ''; // reset
+                });
+            }
+        });
+    }
+
+    function setupActionSheet() {
+        var s1 = document.getElementById('slot-first');
+        var s2 = document.getElementById('slot-second');
+        if (s1) s1.addEventListener('click', function () { openActionSheet(1); });
+        if (s2) s2.addEventListener('click', function () { openActionSheet(2); });
+
+        document.getElementById('action-sheet-overlay').addEventListener('click', function (e) { if (e.target === this) closeActionSheet(); });
+        document.getElementById('as-cancel').addEventListener('click', closeActionSheet);
+        document.getElementById('as-camera').addEventListener('click', function () { closeActionSheet(); document.getElementById('imgPickCamera').click(); });
+        document.getElementById('as-gallery').addEventListener('click', function () { closeActionSheet(); document.getElementById('imgPickGallery').click(); });
+        document.getElementById('as-file').addEventListener('click', function () { closeActionSheet(); document.getElementById('imgPickFile').click(); });
+    }
+
+    function initFaceSDK(plugin, licenseB64, onSuccessCallback) {
+        if (isFaceSDKInitialized) {
+            if (onSuccessCallback) onSuccessCallback();
+            return;
+        }
+        setStatus('Initializing Face SDK…');
+        plugin.Face.initializeFaceSDK(licenseB64, function (res) {
+            isFaceSDKInitialized = true;
+            if (document.getElementById('face-capture')) document.getElementById('face-capture').disabled = false;
+            setStatus('Face SDK Ready', 'ready');
+            logResult('Face Init success: ' + (res.message || res), 'success');
+            if (onSuccessCallback) onSuccessCallback();
+        }, function (err) {
+            setStatus('Face Init Failed', 'error');
+            logResult('Face Init error: ' + err, 'error');
+        });
+    }
+
+    function initDocumentSDK(plugin, licenseB64, onSuccessCallback) {
+        if (isDocReaderInitialized) {
+            if (onSuccessCallback) onSuccessCallback();
+            return;
+        }
+        setStatus('Initializing Document Reader…');
+        var config = { license: licenseB64, licenseUpdateTimeout: 2.0 };
+        plugin.DocumentReader.initializeReader(config, function (message) {
+            isDocReaderInitialized = true;
+            document.getElementById('btn-scenarios').disabled = false;
+            document.getElementById('btn-prepare-db').disabled = false;
+            document.getElementById('btn-scan').disabled = false;
+            setStatus('Doc SDK Ready', 'ready');
+            logResult("Doc Init Success: " + message, "success");
+            if (onSuccessCallback) onSuccessCallback();
+        }, function (error) {
+            setStatus('Doc Init Failed', 'error');
+            logResult("Doc Init Error: " + error, "error");
+        });
+    }
+
+    // Process and display combined results
+    function showCombinedUI(docResults, livenessRes, matchRes) {
+        var portraitBase64 = docResults.getPortrait();
+        var liveBase64 = livenessRes.image;
+
+        renderCombinedImages(portraitBase64, liveBase64);
+
+        if (matchRes && !matchRes.error) {
+            setCombinedSimilarity(matchRes.similarity);
+            logResult('Combined Similarity: ' + (matchRes.similarity * 100).toFixed(1) + '%', 'success');
+        } else {
+            setCombinedSimilarity(null);
+        }
+
+        setCombinedLiveness(livenessRes.liveness);
+
+        // Gather textual Doc Info
+        var docName = docResults.getDocumentName() || "Unknown Document";
+        var docNum = docResults.getTextFieldValueByType(2) || "—"; // FT_DOCUMENT_NUMBER
+        var surname = docResults.getTextFieldValueByType(0) || "—"; // FT_SURNAME
+        var givenNames = docResults.getTextFieldValueByType(1) || "—"; // FT_GIVEN_NAMES
+
+        var textHtml = `
+            <strong>Type:</strong> ${docName}<br/>
+            <strong>Doc Number:</strong> ${docNum}<br/>
+            <strong>Name:</strong> ${givenNames} ${surname}
+        `;
+        document.getElementById('combined-doc-text').innerHTML = textHtml;
     }
 }
