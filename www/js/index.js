@@ -530,17 +530,18 @@ function onDeviceReady() {
 
         setCombinedLiveness(livenessRes.liveness);
 
-        // Gather textual Doc Info
-        var docName = docResults.getDocumentName() || "Unknown Document";
-        var docNum = docResults.getTextFieldValueByType(2) || "—"; // FT_DOCUMENT_NUMBER
-        var surname = docResults.getTextFieldValueByType(0) || "—"; // FT_SURNAME
-        var givenNames = docResults.getTextFieldValueByType(1) || "—"; // FT_GIVEN_NAMES
-
-        var textHtml = `
-            <strong>Type:</strong> ${docName}<br/>
-            <strong>Doc Number:</strong> ${docNum}<br/>
-            <strong>Name:</strong> ${givenNames} ${surname}
-        `;
+        var textHtml = '';
+        if (docResults.textResult && docResults.textResult.fields) {
+            docResults.textResult.fields.forEach(field => {
+                let displayValue = "";
+                if (field.values && field.values.length > 0) {
+                    displayValue = field.values[0].value;
+                } else {
+                    displayValue = field.value;
+                }
+                textHtml += `<strong>${field.fieldName}:</strong> ${displayValue}<br/>`;
+            });
+        }
         document.getElementById('combined-doc-text').innerHTML = textHtml;
     }
 }

@@ -13,15 +13,12 @@
   "author": "Apache Cordova Team",
   "license": "Apache-2.0",
   "cordova": {
-    "plugins": {
-      "cordova-plugin-regula": {}
-    },
+    "plugins": {},
     "platforms": [
       "android"
     ]
   },
   "devDependencies": {
-    "cordova-android": "^15.0.0",
-    "cordova-plugin-regula": "file:../cordova-plugin-regula"
+    "cordova-android": "^15.0.0"
   }
 }
