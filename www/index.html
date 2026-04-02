@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self' data: blob: https://ssl.gstatic.com 'unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src *; img-src 'self' data: content: blob:;">
+        content="default-src 'self' data: blob: https://ssl.gstatic.com 'unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src *; img-src 'self' data: content: blob:; connect-src 'self' https://sdk.faceki.com;">
     <meta name="format-detection" content="telephone=no">
     <meta name="msapplication-tap-highlight" content="no">
     <meta name="viewport" content="initial-scale=1, width=device-width, viewport-fit=cover">
@@ -15,217 +15,28 @@
 
 <body>
     <div class="column" style="height:100%">
-
-        <!-- ── Header ──────────────────────────────────────────────── -->
-        <div class="column header">
-            <div class="header-inner">
-                <div class="header-logo">
-                    <div class="logo-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                            <path
-                                d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 4a3 3 0 110 6 3 3 0 010-6zm0 14a7.97 7.97 0 01-6-2.7C6.06 15.74 9.8 14 12 14s5.94 1.74 6 3.3A7.97 7.97 0 0112 20z"
-                                fill="currentColor" />
-                        </svg>
-                    </div>
-                    <span class="logo-text">Regula Integration</span>
-                </div>
-                <span class="status-badge" id="status-badge">
-                    <span class="status-dot" id="status-dot"></span>
-                    <span id="status-text">Initializing…</span>
-                </span>
-            </div>
-
-            <!-- ── Tab Navigation ──────────────────────────────────── -->
-            <div class="tabs">
-                <button class="tab-btn active" data-target="page-face">Face</button>
-                <button class="tab-btn" data-target="page-doc">Document</button>
-                <button class="tab-btn" data-target="page-combined">Combined</button>
-            </div>
-            <div class="column divider"></div>
+        <div class="row button-row">
+            <button id="get-token" class="button button-primary">Get Token</button>
+            <button id="get-link" class="button button-accent">Get link</button>
+            <button id="start-verify" class="button button-secondary">Start Verify</button>
         </div>
-
-        <!-- ── Main content (Scrollable) ───────────────────────────── -->
-        <div class="column no-scroll main-content">
-
-            <!-- =======================================================
-                 PAGE 1: FACE SDK
-                 ======================================================= -->
-            <div id="page-face" class="page active">
-                <div class="column sub-header">
-                    <div class="row stats-row">
-                        <div class="stat-item">
-                            <span class="stat-label">Similarity</span>
-                            <span id="similarity-status" class="stat-value">—</span>
-                        </div>
-                        <div class="stat-divider"></div>
-                        <div class="stat-item">
-                            <span class="stat-label">Liveness</span>
-                            <span id="liveness-status" class="stat-value">—</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="init-card">
-                    <div class="init-card-label">License File (optional)</div>
-                    <div class="license-row">
-                        <label class="license-pick-btn" for="licenseFileFace" id="licenseLabelFace">
-                            Choose .license
-                        </label>
-                        <input type="file" id="licenseFileFace" accept="*.*" style="display:none">
-                        <button id="btnInitFace" class="button button-primary">Initialize Face</button>
-                    </div>
-                </div>
-
-                <div class="row image-row">
-                    <div class="image-slot" id="slot-first">
-                        <div class="image-placeholder" id="placeholder-first"><span>Tap to add</span></div>
-                        <img id="first-image" style="display:none" alt="Face 1">
-                        <div class="slot-label">Image 1</div>
-                    </div>
-                    <div class="image-slot" id="slot-second">
-                        <div class="image-placeholder" id="placeholder-second"><span>Tap to add</span></div>
-                        <img id="second-image" style="display:none" alt="Face 2">
-                        <div class="slot-label">Image 2</div>
-                    </div>
-                </div>
-
-                <div class="row button-row">
-                    <button id="match-faces" class="button button-primary" disabled>Match</button>
-                    <button id="start-liveness" class="button button-accent">Liveness</button>
-                    <button id="detect-face" class="button button-secondary">Detect</button>
-                </div>
-                <div class="row button-row">
-                    <button id="clear-results" class="button button-ghost">Clear</button>
-                </div>
+        <!-- ── Global Console Log ──────────────────────────────────── -->
+        <div style="padding-top: 20px;"></div>
+        <div class="log-container">
+            <div class="log-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M4 17l6-6-6-6M12 19h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                Console Output
             </div>
-
-            <!-- =======================================================
-                 PAGE 2: DOCUMENT SDK
-                 ======================================================= -->
-            <div id="page-doc" class="page">
-                <div class="init-card">
-                    <div class="init-card-label">License File (optional)</div>
-                    <div class="license-row">
-                        <label class="license-pick-btn" for="licenseFileDoc" id="licenseLabelDoc">
-                            Choose .license
-                        </label>
-                        <input type="file" id="licenseFileDoc" accept="*.*" style="display:none">
-                        <button id="btn-init-doc" class="button button-primary">1. Initialize Doc</button>
-                    </div>
-                </div>
-
-                <div class="row button-row sdk-controls">
-                    <button id="btn-scenarios" class="button button-secondary" disabled>2. Scenarios</button>
-                    <button id="btn-prepare-db" class="button button-secondary">3. Prepare DB</button>
-                </div>
-                <div class="row button-row sdk-controls">
-                    <button id="btn-scan" class="button button-accent" disabled>4. Start Scanner</button>
-                </div>
-            </div>
-
-            <!-- =======================================================
-                 PAGE 3: COMBINED FLOW
-                 ======================================================= -->
-            <div id="page-combined" class="page">
-                <div class="init-card">
-                    <div class="init-card-label">Combined Flow Setup</div>
-                    <div class="license-row">
-                        <label class="license-pick-btn" for="licenseFileCombined" id="licenseLabelCombined">
-                            Choose .license
-                        </label>
-                        <input type="file" id="licenseFileCombined" accept="*.*" style="display:none">
-                        <button id="btnInitBoth" class="button button-primary">1. Init Both SDKs</button>
-                    </div>
-                </div>
-
-                <div class="row button-row sdk-controls">
-                    <button id="btn-capture-verify" class="button button-accent" style="width: 100%;" disabled>
-                        2. Capture and Verify
-                    </button>
-                </div>
-
-                <!-- Combined Results Display -->
-                <div id="combined-results-view" style="display:none;">
-                    <div class="column sub-header" style="margin-top: 15px; border-radius: 8px;">
-                        <div class="row stats-row">
-                            <div class="stat-item">
-                                <span class="stat-label">Doc & Face Match</span>
-                                <span id="combined-similarity" class="stat-value">—</span>
-                            </div>
-                            <div class="stat-divider"></div>
-                            <div class="stat-item">
-                                <span class="stat-label">Face Liveness</span>
-                                <span id="combined-liveness" class="stat-value">—</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row image-row" style="margin-top: 15px;">
-                        <div class="image-slot">
-                            <div class="image-placeholder" id="placeholder-combined-doc"><span>Doc Portrait</span></div>
-                            <img id="combined-doc-image" style="display:none" alt="Document Face">
-                            <div class="slot-label">Doc Portrait</div>
-                        </div>
-                        <div class="image-slot">
-                            <div class="image-placeholder" id="placeholder-combined-live"><span>Live Capture</span>
-                            </div>
-                            <img id="combined-live-image" style="display:none" alt="Live Face">
-                            <div class="slot-label">Live Face</div>
-                        </div>
-                    </div>
-
-                    <div class="init-card" style="margin-top: 10px;">
-                        <div class="init-card-label" style="margin-bottom: 5px;">Document Information</div>
-                        <div id="combined-doc-text" style="font-size: 13px; color: var(--text); line-height: 1.5;">
-                            —
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ── Global Console Log ──────────────────────────────────── -->
-            <div style="padding-top: 20px;"></div>
-            <div class="log-container">
-                <div class="log-header">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M4 17l6-6-6-6M12 19h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" />
-                    </svg>
-                    Console Output
-                </div>
-                <div id="results">Waiting for device…</div>
-            </div>
-
-            <!-- Global SDK Deinit -->
-            <div class="row button-row sdk-controls" style="margin-top: 15px;">
-                <button id="btnDeinitAll" class="button button-outline" style="flex:1">
-                    Deinitialize SDKs
-                </button>
-            </div>
-
-            <div style="padding-bottom:30px"></div>
+            <div id="results">Waiting for device…</div>
         </div>
     </div>
 
-    <!-- ── Action Sheet (image source picker) ──────────────────── -->
-    <div id="action-sheet-overlay" class="action-sheet-overlay" style="display:none">
-        <div class="action-sheet" id="action-sheet">
-            <div class="action-sheet-title">Select image source</div>
-            <button id="face-capture" class="action-sheet-btn" disabled>Regula Camera</button>
-            <button id="as-camera" class="action-sheet-btn">Camera</button>
-            <button id="as-gallery" class="action-sheet-btn">Gallery</button>
-            <button id="as-file" class="action-sheet-btn">Choose File</button>
-            <button id="as-cancel" class="action-sheet-btn cancel">Cancel</button>
-        </div>
-    </div>
-
-    <!-- Hidden Inputs -->
-    <input type="file" id="imgPickCamera" accept="image/*" capture="environment" style="display:none">
-    <input type="file" id="imgPickGallery" accept="image/*" style="display:none">
-    <input type="file" id="imgPickFile" accept="image/*,application/octet-stream" style="display:none">
 
     <script src="cordova.js"></script>
-    <script src="js/resultParser.js"></script>
-    <script src="js/index.js"></script>
+    <script src="js/faceki.js"></script>
 </body>
 
 </html>
