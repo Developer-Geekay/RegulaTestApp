@@ -9,31 +9,187 @@
     <meta name="msapplication-tap-highlight" content="no">
     <meta name="viewport" content="initial-scale=1, width=device-width, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
-    <title>Regula SDKs</title>
+    <title>FaceKi KYC Test</title>
     <link rel="stylesheet" href="css/index.css">
+    <style>
+        /* ── FaceKi page layout ───────────────────────────────── */
+        .faceki-page {
+            padding: 20px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            height: 100%;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+
+        /* Step labels */
+        .step-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+
+        /* Styled text input */
+        .text-input {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-family: 'Menlo', 'Monaco', monospace;
+            font-size: 12px;
+            padding: 12px 14px;
+            box-sizing: border-box;
+            outline: none;
+            -webkit-user-select: text;
+            user-select: text;
+            transition: border-color 0.2s;
+        }
+
+        .text-input:focus {
+            border-color: var(--accent);
+        }
+
+        .text-input::placeholder {
+            color: var(--text-dim);
+            font-family: var(--font);
+        }
+
+        /* KYC Result card */
+        .kyc-result-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .kyc-result-card.visible {
+            display: flex;
+        }
+
+        .kyc-result-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .kyc-result-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .kyc-result-card.ok .kyc-result-dot {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .kyc-result-card.cancelled .kyc-result-dot {
+            background: var(--warning);
+        }
+
+        .kyc-result-card.sdk-error .kyc-result-dot {
+            background: var(--danger);
+        }
+
+        .kyc-result-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .kyc-result-card.ok .kyc-result-title {
+            color: var(--success);
+        }
+
+        .kyc-result-card.cancelled .kyc-result-title {
+            color: var(--warning);
+        }
+
+        .kyc-result-card.sdk-error .kyc-result-title {
+            color: var(--danger);
+        }
+
+        .kyc-result-data {
+            font-family: 'Menlo', 'Monaco', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            background: var(--surface);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 160px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .kyc-result-data.visible {
+            display: block;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="column" style="height:100%">
-        <div class="row button-row">
-            <button id="get-token" class="button button-primary">Get Token</button>
-            <button id="get-link" class="button button-accent">Get link</button>
-            <button id="start-verify" class="button button-secondary">Start Verify</button>
+    <div class="faceki-page">
+
+        <!-- ── Step 1: Auth ─────────────────────────────────── -->
+        <div>
+            <div class="step-label">Step 1 — Authenticate</div>
+            <div class="row button-row" style="margin-bottom:0">
+                <button id="get-token" class="button button-primary">Get Token</button>
+            </div>
         </div>
-        <!-- ── Global Console Log ──────────────────────────────────── -->
-        <div style="padding-top: 20px;"></div>
-        <div class="log-container">
+
+        <!-- ── Step 2: Generate Link ────────────────────────── -->
+        <div>
+            <div class="step-label">Step 2 — Generate Verification Link</div>
+            <div class="row button-row" style="margin-bottom: 8px">
+                <button id="get-link" class="button button-accent">Get Link</button>
+            </div>
+            <input type="text" id="verification-link" class="text-input"
+                placeholder="Link ID will appear here, or enter manually">
+        </div>
+
+        <!-- ── Step 3: Start KYC ─────────────────────────────── -->
+        <div>
+            <div class="step-label">Step 3 — Start KYC Verification</div>
+            <div class="row button-row" style="margin-bottom:0">
+                <button id="start-verify" class="button button-secondary">Start Verify</button>
+            </div>
+        </div>
+
+        <!-- ── KYC Result Card ───────────────────────────────── -->
+        <div id="kyc-result-card" class="kyc-result-card">
+            <div class="kyc-result-header">
+                <div class="kyc-result-dot"></div>
+                <div class="kyc-result-title" id="kyc-result-title">—</div>
+            </div>
+            <div class="kyc-result-data" id="kyc-result-data"></div>
+        </div>
+
+        <!-- ── Console Output ───────────────────────────────── -->
+        <div class="log-container" style="flex:1; min-height: 120px;">
             <div class="log-header">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M4 17l6-6-6-6M12 19h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" />
+                    <path d="M4 17l6-6-6-6M12 19h8" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
                 Console Output
             </div>
-            <div id="results">Waiting for device…</div>
+            <div id="results" style="height:140px">Waiting for device…</div>
         </div>
-    </div>
 
+    </div>
 
     <script src="cordova.js"></script>
     <script src="js/faceki.js"></script>

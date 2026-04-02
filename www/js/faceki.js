@@ -2,13 +2,15 @@
 const FACEKI_CLIENT_ID = "8wnoSZUomrD2FYpgymGwMr70Z";
 const FACEKI_CLIENT_SECRET = "AvgCjK1C58eT45DECde3nDLGJUNKSR3GvZhn371dm38o6r7L2bZtALm8RV5AJPck";
 const FACEKI_WORKFLOW_ID = "7ba33de6-5df6-4414-a89d-96e4479ce93a";
+const APPLICATION_ID = "RC1020222222";
 
 let accessToken = null;
-let verificationLink = null;
-let dataId = null;
+// The UUID/link-ID returned in data.data from the link-generation API.
+// This is what the SDK expects — NOT the full URL from data.url.
+let verificationLinkId = null;
 
 function logResult(msg, type) {
-    console.log('[RegulaApp]', msg);
+    console.log('[FaceKi]', msg);
     var resDiv = document.getElementById('results');
     if (!resDiv) return;
     var text = (typeof msg === 'object') ? JSON.stringify(msg, null, 2) : String(msg);
@@ -16,6 +18,24 @@ function logResult(msg, type) {
     line.className = 'log-line' + (type ? ' ' + type : '');
     line.textContent = '> ' + text;
     resDiv.insertBefore(line, resDiv.firstChild);
+}
+
+function showKycResult(statusText, cardClass, dataObj) {
+    var card  = document.getElementById('kyc-result-card');
+    var title = document.getElementById('kyc-result-title');
+    var data  = document.getElementById('kyc-result-data');
+    if (!card) return;
+
+    card.className  = 'kyc-result-card visible ' + cardClass;
+    title.textContent = statusText;
+
+    if (dataObj) {
+        data.textContent = JSON.stringify(dataObj, null, 2);
+        data.className = 'kyc-result-data visible';
+    } else {
+        data.textContent = '';
+        data.className = 'kyc-result-data';
+    }
 }
 
 document.addEventListener('deviceready', onDeviceReady, false);
@@ -31,9 +51,7 @@ async function getToken() {
     try {
         const response = await fetch('https://sdk.faceki.com/auth/api/generate-token', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 clientId: FACEKI_CLIENT_ID,
                 clientSecret: FACEKI_CLIENT_SECRET
@@ -41,12 +59,12 @@ async function getToken() {
         });
 
         if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
+            throw new Error('HTTP ' + response.status);
         }
 
         const data = await response.json();
         accessToken = data.data.access_token;
-        logResult('Data: ' + JSON.stringify(data), 'success');
+        logResult('Token obtained.', 'success');
     } catch (error) {
         logResult('Error getting token: ' + error.message, 'error');
     }
@@ -54,11 +72,11 @@ async function getToken() {
 
 async function getLink() {
     if (!accessToken) {
-        logResult('No access token. Please get token first.', 'error');
+        logResult('No access token. Get token first.', 'error');
         return;
     }
 
-    logResult('Getting link...', 'info');
+    logResult('Getting verification link...', 'info');
     try {
         const response = await fetch('https://sdk.faceki.com/kycverify/api/kycverify/kyc-verify-link', {
             method: 'POST',
@@ -68,38 +86,70 @@ async function getLink() {
             },
             body: JSON.stringify({
                 expiryTime: 1,
-                applicationId: "RC1020222222",
+                applicationId: APPLICATION_ID,
                 redirect_url: "https://muat.riyadcapital.com/RCOnline/Login",
                 workflowId: FACEKI_WORKFLOW_ID
             })
         });
 
         if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
+            throw new Error('HTTP ' + response.status);
         }
 
         const data = await response.json();
-        logResult('Data: ' + JSON.stringify(data), 'success'); // Assumed from spec
-        verificationLink = data.url;
-        dataId = data.data;
+        logResult('Link response: ' + JSON.stringify(data), 'success');
+
+        // data.data is the link ID (UUID) the SDK expects.
+        // data.url is the full browser URL — we do NOT pass that to the SDK.
+        verificationLinkId = data.data;
+
+        // Populate the input field so the user can see and optionally override it.
+        var input = document.getElementById('verification-link');
+        if (input) input.value = verificationLinkId || '';
+
+        logResult('Link ID ready: ' + verificationLinkId, 'success');
     } catch (error) {
         logResult('Error getting link: ' + error.message, 'error');
     }
 }
 
 function startVerify() {
-    logResult('Starting verify...', 'info');
-    // For now, this still uses the plugin or redirect if provided in the link.
-    // If the user wants a full implementation, further details would be needed.
+    // Prefer whatever is in the input field (allows manual override),
+    // fall back to the link fetched via getLink().
+    var inputVal = (document.getElementById('verification-link').value || '').trim();
+    var linkId = inputVal || verificationLinkId;
+
+    if (!linkId) {
+        logResult('No verification link. Click "Get Link" or enter a link ID.', 'error');
+        return;
+    }
+
+    logResult('Starting KYC verification...', 'info');
+
     FaceKiPlugin.startKycVerification(
-        verificationLink,
-        dataId,
+        linkId,        // UUID from data.data (or full URL — plugin extracts UUID automatically)
+        APPLICATION_ID, // recordIdentifier — your internal session/application identifier
         function (response) {
-            console.log("KYC Success:", response.status);
+            // VerificationResult.ResultOk — user completed the KYC flow
+            logResult('KYC completed — status: ' + response.status, 'success');
+            if (response.data) {
+                logResult(JSON.stringify(response.data, null, 2), 'success');
+            }
+            showKycResult('Verification Completed', 'ok', response.data || null);
         },
         function (error) {
-            console.error("KYC Error:", error.status);
+            // VerificationResult.ResultCanceled — user pressed back
+            // or a plain string message on SDK/network error
+            if (error && typeof error === 'object' && error.status) {
+                logResult('KYC ' + error.status, 'error');
+                if (error.data) {
+                    logResult(JSON.stringify(error.data, null, 2), 'error');
+                }
+                showKycResult('Verification Cancelled', 'cancelled', error.data || null);
+            } else {
+                logResult('KYC error: ' + String(error), 'error');
+                showKycResult('SDK Error', 'sdk-error', null);
+            }
         }
     );
-    logResult('Verify action triggered.', 'success');
 }
